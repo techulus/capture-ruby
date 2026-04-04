@@ -1,0 +1,7 @@
+*.gem
+*.gemspec.lock
+.bundle/
+Gemfile.lock
+pkg/
+spec/reports/
+tmp/
