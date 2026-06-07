@@ -136,13 +136,13 @@ File.binwrite("animation.gif", gif_data)
 ### Browser Sessions
 
 ```ruby
-session = client.create_session("maxTtlSeconds" => 300)
+session = client.sessions.create("maxTtlSeconds" => 300)
 session_id = session["session"]["id"]
 
-client.execute_action(session_id, "goto", "url" => "https://example.com")
-screenshot = client.execute_action(session_id, "screenshot", "fullPage" => true)
+client.sessions.action(session_id, "goto", "url" => "https://example.com")
+screenshot = client.sessions.action(session_id, "screenshot", "fullPage" => true)
 
-client.close_session(session_id)
+client.sessions.close(session_id)
 ```
 
 ## Configuration Options

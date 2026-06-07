@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name = "capture_page"
-  spec.version = "1.1.0"
+  spec.version = "1.2.0"
   spec.authors = ["Capture Team"]
   spec.email = ["support@capture.page"]
 

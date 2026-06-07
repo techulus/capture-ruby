@@ -16,11 +16,39 @@ class CaptureSessionsError < StandardError
   end
 end
 
+class CaptureSessions
+  def initialize(client)
+    @client = client
+  end
+
+  def create(options = {})
+    options = options.nil? ? {} : options
+    raise TypeError, "options must be a Hash" unless options.is_a?(Hash)
+
+    @client.send(:sessions_request, "", :post, options)
+  end
+
+  def get(session_id)
+    @client.send(:sessions_request, "/#{@client.send(:escape_path, session_id)}", :get)
+  end
+
+  def close(session_id)
+    @client.send(:sessions_request, "/#{@client.send(:escape_path, session_id)}", :delete)
+  end
+
+  def action(session_id, action_type, payload = {})
+    payload = payload.nil? ? {} : payload
+    raise TypeError, "payload must be a Hash" unless payload.is_a?(Hash)
+
+    @client.send(:sessions_request, "/#{@client.send(:escape_path, session_id)}/actions", :post, "type" => action_type, "payload" => payload)
+  end
+end
+
 class Capture
   API_URL = "https://cdn.capture.page"
   EDGE_URL = "https://edge.capture.page"
 
-  attr_reader :key, :options
+  attr_reader :key, :options, :sessions
 
   def initialize(key, secret, options = {})
     @key = key
@@ -28,6 +56,7 @@ class Capture
     options = options.nil? ? {} : options
     raise TypeError, "options must be a Hash" unless options.is_a?(Hash)
     @options = options
+    @sessions = CaptureSessions.new(self)
   end
 
   def build_image_url(url, options = {})
@@ -68,28 +97,6 @@ class Capture
 
   def fetch_animated(url, options = {})
     fetch_binary(build_animated_url(url, options))
-  end
-
-  def create_session(options = {})
-    options = options.nil? ? {} : options
-    raise TypeError, "options must be a Hash" unless options.is_a?(Hash)
-
-    sessions_request("", :post, options)
-  end
-
-  def get_session(session_id)
-    sessions_request("/#{escape_path(session_id)}", :get)
-  end
-
-  def close_session(session_id)
-    sessions_request("/#{escape_path(session_id)}", :delete)
-  end
-
-  def execute_action(session_id, action_type, payload = {})
-    payload = payload.nil? ? {} : payload
-    raise TypeError, "payload must be a Hash" unless payload.is_a?(Hash)
-
-    sessions_request("/#{escape_path(session_id)}/actions", :post, "type" => action_type, "payload" => payload)
   end
 
   private

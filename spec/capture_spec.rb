@@ -211,7 +211,7 @@ RSpec.describe Capture do
       end
       allow(Net::HTTP).to receive(:start).and_yield(http)
 
-      result = client.create_session("maxTtlSeconds" => 300, "proxy" => true)
+      result = client.sessions.create("maxTtlSeconds" => 300, "proxy" => true)
 
       expect(result["session"]["id"]).to eq("sess_123")
       expect(requests.first).to be_a(Net::HTTP::Post)
@@ -234,9 +234,9 @@ RSpec.describe Capture do
       end
       allow(Net::HTTP).to receive(:start).and_yield(http)
 
-      client.get_session("sess_123")
-      client.close_session("sess_123")
-      client.execute_action("sess_123", "goto", "url" => "https://example.com")
+      client.sessions.get("sess_123")
+      client.sessions.close("sess_123")
+      client.sessions.action("sess_123", "goto", "url" => "https://example.com")
 
       expect(paths).to eq([
         ["GET", "/v1/sessions/sess_123", nil],
@@ -254,7 +254,7 @@ RSpec.describe Capture do
       allow(http).to receive(:request).and_return(response)
       allow(Net::HTTP).to receive(:start).and_yield(http)
 
-      expect { client.get_session("missing") }.to raise_error(CaptureSessionsError) do |error|
+      expect { client.sessions.get("missing") }.to raise_error(CaptureSessionsError) do |error|
         expect(error.status).to eq(404)
         expect(error.body).to eq("success" => false, "error" => "Session not found")
         expect(error.message).to eq("Session not found")
@@ -270,16 +270,16 @@ RSpec.describe Capture do
       secret = ENV.fetch("CAPTURE_SECRET")
       client = Capture.new(key, secret)
 
-      created = client.create_session("maxTtlSeconds" => 120)
+      created = client.sessions.create("maxTtlSeconds" => 120)
       session_id = created.dig("session", "id")
       expect(session_id).to be_a(String)
       expect(session_id).not_to be_empty
 
       begin
-        goto_response = client.execute_action(session_id, "goto", "url" => "https://example.com")
+        goto_response = client.sessions.action(session_id, "goto", "url" => "https://example.com")
         expect(goto_response["success"]).to be true
 
-        screenshot_response = client.execute_action(session_id, "screenshot", "fullPage" => true)
+        screenshot_response = client.sessions.action(session_id, "screenshot", "fullPage" => true)
         expect(screenshot_response["success"]).to be true
 
         screenshot =
@@ -298,7 +298,7 @@ RSpec.describe Capture do
         expect(screenshot["bodyBase64"]).to be_a(String)
         expect(screenshot["bodyBase64"]).not_to be_empty
       ensure
-        client.close_session(session_id) if session_id
+        client.sessions.close(session_id) if session_id
       end
     end
   end
