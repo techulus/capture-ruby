@@ -5,6 +5,17 @@ require "net/http"
 require "uri"
 require "json"
 
+class CaptureSessionsError < StandardError
+  attr_reader :status, :body
+
+  def initialize(status, body)
+    message = body.is_a?(Hash) && body["error"].is_a?(String) ? body["error"] : "Capture Sessions API request failed with status #{status}"
+    super(message)
+    @status = status
+    @body = body
+  end
+end
+
 class Capture
   API_URL = "https://cdn.capture.page"
   EDGE_URL = "https://edge.capture.page"
@@ -59,6 +70,28 @@ class Capture
     fetch_binary(build_animated_url(url, options))
   end
 
+  def create_session(options = {})
+    options = options.nil? ? {} : options
+    raise TypeError, "options must be a Hash" unless options.is_a?(Hash)
+
+    sessions_request("", :post, options)
+  end
+
+  def get_session(session_id)
+    sessions_request("/#{escape_path(session_id)}", :get)
+  end
+
+  def close_session(session_id)
+    sessions_request("/#{escape_path(session_id)}", :delete)
+  end
+
+  def execute_action(session_id, action_type, payload = {})
+    payload = payload.nil? ? {} : payload
+    raise TypeError, "payload must be a Hash" unless payload.is_a?(Hash)
+
+    sessions_request("/#{escape_path(session_id)}/actions", :post, "type" => action_type, "payload" => payload)
+  end
+
   private
 
   def build_url(url, request_type, options)
@@ -109,5 +142,55 @@ class Capture
     raise "HTTP Error: #{response.code} #{response.message}" unless response.is_a?(Net::HTTPSuccess)
 
     JSON.parse(response.body)
+  end
+
+  def sessions_bearer_token
+    raise TypeError, "key and secret must be strings" unless @key.is_a?(String) && @secret.is_a?(String)
+    raise ArgumentError, "Key and Secret is required" if @key.empty? || @secret.empty?
+
+    ["#{@key}:#{@secret}"].pack("m0")
+  end
+
+  def session_url(path = "")
+    "#{EDGE_URL}/v1/sessions#{path}"
+  end
+
+  def sessions_request(path, method, body = nil)
+    uri = URI.parse(session_url(path))
+    request = case method
+              when :post then Net::HTTP::Post.new(uri)
+              when :get then Net::HTTP::Get.new(uri)
+              when :delete then Net::HTTP::Delete.new(uri)
+              else raise ArgumentError, "unsupported sessions request method"
+              end
+
+    request["Authorization"] = "Bearer #{sessions_bearer_token}"
+    unless body.nil?
+      request["Content-Type"] = "application/json"
+      request.body = JSON.generate(body)
+    end
+
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") do |http|
+      http.request(request)
+    end
+    response_body = parse_json_response(response.body)
+
+    raise CaptureSessionsError.new(response.code.to_i, response_body) unless response.is_a?(Net::HTTPSuccess)
+
+    response_body
+  end
+
+  def parse_json_response(body)
+    return {} if body.nil? || body.empty?
+
+    JSON.parse(body)
+  rescue JSON::ParserError
+    {}
+  end
+
+  def escape_path(value)
+    raise ArgumentError, "session_id is required" if value.nil? || value.to_s.empty?
+
+    URI.encode_www_form_component(value.to_s)
   end
 end

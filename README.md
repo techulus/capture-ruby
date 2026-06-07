@@ -34,6 +34,7 @@ puts image_url
 - **Content Extraction**: Extract HTML and text content from web pages
 - **Metadata Extraction**: Get page metadata (title, description, og tags, etc.)
 - **Animated GIFs**: Create animated GIFs of page interactions
+- **Browser Sessions**: Create stateful browser sessions and run actions
 - **Zero Dependencies**: Uses only Ruby standard library
 
 ## Usage
@@ -130,6 +131,18 @@ puts metadata["metadata"]
 ```ruby
 gif_data = client.fetch_animated("https://example.com")
 File.binwrite("animation.gif", gif_data)
+```
+
+### Browser Sessions
+
+```ruby
+session = client.create_session("maxTtlSeconds" => 300)
+session_id = session["session"]["id"]
+
+client.execute_action(session_id, "goto", "url" => "https://example.com")
+screenshot = client.execute_action(session_id, "screenshot", "fullPage" => true)
+
+client.close_session(session_id)
 ```
 
 ## Configuration Options

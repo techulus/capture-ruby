@@ -178,4 +178,128 @@ RSpec.describe Capture do
       expect(token).to eq("f37d5fb3ee4540a05bf4ffeed6dffa28")
     end
   end
+
+  describe "sessions API" do
+    class FakeSessionSuccess < Net::HTTPSuccess
+      attr_reader :body
+
+      def initialize(code, body)
+        super("1.1", code, "OK")
+        @body = body
+      end
+    end
+
+    class FakeSessionNotFound < Net::HTTPNotFound
+      attr_reader :body
+
+      def initialize(body)
+        super("1.1", "404", "Not Found")
+        @body = body
+      end
+    end
+
+    it "creates a session with bearer auth and JSON body" do
+      stub_const("Capture::EDGE_URL", "https://edge.test")
+      client = Capture.new("user_123", "secret")
+      requests = []
+      http = double("http")
+      response = FakeSessionSuccess.new("201", JSON.generate("success" => true, "session" => { "id" => "sess_123" }))
+
+      allow(http).to receive(:request) do |request|
+        requests << request
+        response
+      end
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      result = client.create_session("maxTtlSeconds" => 300, "proxy" => true)
+
+      expect(result["session"]["id"]).to eq("sess_123")
+      expect(requests.first).to be_a(Net::HTTP::Post)
+      expect(requests.first["Authorization"]).to eq("Bearer dXNlcl8xMjM6c2VjcmV0")
+      expect(requests.first["Content-Type"]).to eq("application/json")
+      expect(JSON.parse(requests.first.body)).to eq("maxTtlSeconds" => 300, "proxy" => true)
+      expect(Net::HTTP).to have_received(:start).with("edge.test", 443, use_ssl: true)
+    end
+
+    it "gets, closes, and executes actions against session paths" do
+      stub_const("Capture::EDGE_URL", "https://edge.test")
+      client = Capture.new("user_123", "secret")
+      paths = []
+      http = double("http")
+      response = FakeSessionSuccess.new("200", JSON.generate("success" => true, "session" => { "id" => "sess_123" }))
+
+      allow(http).to receive(:request) do |request|
+        paths << [request.method, request.path, request.body]
+        response
+      end
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      client.get_session("sess_123")
+      client.close_session("sess_123")
+      client.execute_action("sess_123", "goto", "url" => "https://example.com")
+
+      expect(paths).to eq([
+        ["GET", "/v1/sessions/sess_123", nil],
+        ["DELETE", "/v1/sessions/sess_123", nil],
+        ["POST", "/v1/sessions/sess_123/actions", JSON.generate("type" => "goto", "payload" => { "url" => "https://example.com" })]
+      ])
+    end
+
+    it "raises a sessions error with status and body" do
+      stub_const("Capture::EDGE_URL", "https://edge.test")
+      client = Capture.new("user_123", "secret")
+      http = double("http")
+      response = FakeSessionNotFound.new(JSON.generate("success" => false, "error" => "Session not found"))
+
+      allow(http).to receive(:request).and_return(response)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      expect { client.get_session("missing") }.to raise_error(CaptureSessionsError) do |error|
+        expect(error.status).to eq(404)
+        expect(error.body).to eq("success" => false, "error" => "Session not found")
+        expect(error.message).to eq("Session not found")
+      end
+    end
+
+    it "creates a live session and screenshots example.com", :live do
+      unless ENV["CAPTURE_LIVE_SESSIONS"] == "1"
+        skip "set CAPTURE_LIVE_SESSIONS=1 with CAPTURE_KEY and CAPTURE_SECRET to run"
+      end
+
+      key = ENV.fetch("CAPTURE_KEY")
+      secret = ENV.fetch("CAPTURE_SECRET")
+      client = Capture.new(key, secret)
+
+      created = client.create_session("maxTtlSeconds" => 120)
+      session_id = created.dig("session", "id")
+      expect(session_id).to be_a(String)
+      expect(session_id).not_to be_empty
+
+      begin
+        goto_response = client.execute_action(session_id, "goto", "url" => "https://example.com")
+        expect(goto_response["success"]).to be true
+
+        screenshot_response = client.execute_action(session_id, "screenshot", "fullPage" => true)
+        expect(screenshot_response["success"]).to be true
+
+        screenshot =
+          if screenshot_response["bodyBase64"]
+            screenshot_response
+          elsif screenshot_response.dig("result", "bodyBase64")
+            screenshot_response["result"]
+          elsif screenshot_response.dig("result", "screenshot", "bodyBase64")
+            screenshot_response.dig("result", "screenshot")
+          else
+            screenshot_response["screenshot"]
+          end
+
+        expect(screenshot).to be_a(Hash), "screenshot response: #{screenshot_response.inspect}"
+        expect(screenshot["contentType"]).to eq("image/png")
+        expect(screenshot["bodyBase64"]).to be_a(String)
+        expect(screenshot["bodyBase64"]).not_to be_empty
+      ensure
+        client.close_session(session_id) if session_id
+      end
+    end
+  end
 end
