@@ -221,6 +221,42 @@ RSpec.describe Capture do
       expect(Net::HTTP).to have_received(:start).with("edge.test", 443, use_ssl: true)
     end
 
+    it "creates a CDP session with cdp enabled" do
+      stub_const("Capture::EDGE_URL", "https://edge.test")
+      client = Capture.new("user_123", "secret")
+      requests = []
+      http = double("http")
+      response = FakeSessionSuccess.new("201", JSON.generate(
+        "success" => true,
+        "session" => {
+          "id" => "sess_cdp",
+          "status" => "active",
+          "connectUrl" => "wss://edge.capture.page/v1/sessions/sess_cdp/cdp"
+        }
+      ))
+
+      allow(http).to receive(:request) do |request|
+        requests << request
+        response
+      end
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+
+      result = client.sessions.create("maxTtlSeconds" => 300, "cdp" => true)
+
+      expect(result).to eq(
+        "success" => true,
+        "session" => {
+          "id" => "sess_cdp",
+          "status" => "active",
+          "connectUrl" => "wss://edge.capture.page/v1/sessions/sess_cdp/cdp"
+        }
+      )
+      expect(requests.first).to be_a(Net::HTTP::Post)
+      expect(requests.first["Authorization"]).to eq("Bearer dXNlcl8xMjM6c2VjcmV0")
+      expect(requests.first["Content-Type"]).to eq("application/json")
+      expect(JSON.parse(requests.first.body)).to eq("maxTtlSeconds" => 300, "cdp" => true)
+    end
+
     it "gets, closes, and executes actions against session paths" do
       stub_const("Capture::EDGE_URL", "https://edge.test")
       client = Capture.new("user_123", "secret")
