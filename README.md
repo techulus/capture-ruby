@@ -145,6 +145,21 @@ screenshot = client.sessions.action(session_id, "screenshot", "fullPage" => true
 client.sessions.close(session_id)
 ```
 
+### CDP Sessions
+
+Pass `"cdp" => true` when creating a browser session to get a Chrome DevTools Protocol connection URL in the response.
+
+```ruby
+session = client.sessions.create(
+  "maxTtlSeconds" => 300,
+  "cdp" => true
+)
+
+connect_url = session["session"]["connect_url"] || session["session"]["connectUrl"]
+```
+
+CDP sessions cannot be combined with `proxy` or `bypassBotDetection`.
+
 ## Configuration Options
 
 ### Constructor Options
